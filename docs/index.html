@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Website Bug Analyzer — Find what's broken</title>
+  <meta name="description" content="Paste any website URL and get a plain-language audit: broken links, missing SEO, security headers, and a heuristic guess whether the site was AI-built or human-built.">
+  <link rel="canonical" href="https://akbar-lab-droid.github.io/website-bug-analyzer/">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-row">
+      <a class="brand" href="./">Website Bug Analyzer</a>
+      <a class="github-link" href="https://github.com/Akbar-Lab-Droid/website-bug-analyzer">GitHub ↗</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>Find what's broken.</h1>
+      <p class="lede">Paste a URL. Get a plain-language audit — broken links, missing
+      SEO, security headers — plus an honest guess whether the site was
+      built by AI or by a human.</p>
+
+      <form id="analyze-form" class="analyze-form">
+        <label class="sr-only" for="url-input">Website URL</label>
+        <input id="url-input" type="url" inputmode="url" required
+               placeholder="https://example.com" autocomplete="off"
+               spellcheck="false">
+        <button id="analyze-btn" type="submit">Analyze</button>
+      </form>
+      <p class="examples">Try:
+        <button type="button" class="chip" data-url="https://example.com">example.com</button>
+        <button type="button" class="chip" data-url="https://akbar-lab-droid.github.io/repo-safety-check/">repo-safety-check</button>
+      </p>
+      <p class="proxy-note">The web version fetches pages through the public
+      <a href="https://allorigins.win">allorigins.win</a> CORS proxy, so it can
+      read pages from any site. No sign-up, no token, nothing is stored.
+      Security headers can't be checked from a browser — use the
+      <a href="https://github.com/Akbar-Lab-Droid/website-bug-analyzer">CLI</a>
+      for the full audit.</p>
+    </section>
+
+    <section id="status" class="status" hidden></section>
+
+    <section id="results" class="results" hidden>
+      <div class="score-row">
+        <div class="score-card">
+          <div class="score-number"><span id="score-value">–</span><span class="score-max">/100</span></div>
+          <div id="score-health" class="score-health">–</div>
+          <p id="score-basics" class="score-basics"></p>
+        </div>
+        <div class="ai-card">
+          <h2>AI or human?</h2>
+          <p id="ai-verdict" class="ai-verdict">–</p>
+          <p class="ai-note">Heuristic estimate, not proof. Based on public
+          signals: meta generator, builder footers, generic copy, stock photos.</p>
+          <ul id="ai-signals" class="ai-signals"></ul>
+        </div>
+      </div>
+
+      <h2 id="findings-heading">Findings</h2>
+      <p id="findings-summary" class="findings-summary"></p>
+      <div id="findings"></div>
+    </section>
+
+    <section class="checks">
+      <h2>What it checks</h2>
+      <div class="check-grid">
+        <article class="check-card"><h3>Availability</h3><p>HTTP status, redirects, response time, HTTPS.</p></article>
+        <article class="check-card"><h3>Security</h3><p>Missing security headers and mixed content (CLI only).</p></article>
+        <article class="check-card"><h3>SEO basics</h3><p>Title, meta description, canonical, lang, viewport, headings.</p></article>
+        <article class="check-card"><h3>Links</h3><p>Every link on the page, checked for 404s and timeouts.</p></article>
+        <article class="check-card"><h3>Images</h3><p>Missing alt text, broken sources, missing dimensions.</p></article>
+        <article class="check-card"><h3>AI or human</h3><p>Builder fingerprints, generic copy, stock photos.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Website Bug Analyzer — free and open source.
+      <a href="https://github.com/Akbar-Lab-Droid/website-bug-analyzer">Source on GitHub</a>.
+      The AI-vs-human verdict is a heuristic guess; always verify by hand.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!-- Test fixture: a deliberately broken page. The analyzer must find every
+     planted issue: no <title>, no meta description, no lang, no viewport,
+     no <h1>, a broken link, a broken image, an image without alt text,
+     an AI-builder generator tag, generic AI-style copy, a stock photo,
+     and one large unminified stylesheet (big.css, created by the test). -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="Durable">
+  <link rel="stylesheet" href="/big.css">
+  <script src="http://example.com/tracker.js"></script>
+</head>
+<body>
+  <h2>Welcome to the future of productivity</h2>
+  <p>In today's fast-paced world, unlock the power of our platform and
+  elevate your workflow. Delve into a seamless experience that will
+  revolutionize the way you work and take your business to the next level.</p>
+  <p><a href="/missing-page">A link that goes nowhere</a></p>
+  <p><a href="/">Back home</a></p>
+  <img src="https://images.unsplash.com/photo-1">
+  <img src="/does-not-exist.png" alt="A broken image">
+  <img src="/ok.png" alt="A fine image" width="100" height="100">
+</body>
+</html>
