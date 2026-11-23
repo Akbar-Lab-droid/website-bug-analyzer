@@ -1,15 +1,46 @@
 /* Website Bug Analyzer — browser version.
    Same checks as the CLI (analyzer.py) wherever the browser allows them:
    SEO, links, images, mixed content, unminified assets, AI-vs-human signals.
-   Pages are fetched through the public allorigins.win CORS proxy, so no
-   token is needed. Security headers cannot be read through the proxy and
-   are skipped here — use the CLI for the full audit. */
+
+   Pages are fetched through public CORS proxies (allorigins.win first,
+   then fallbacks), because a browser cannot fetch other sites directly.
+   Public proxies are flaky — any of them can be down — so the app retries
+   across several proxies and never reports a proxy failure as a broken
+   link. If every proxy fails, the "paste HTML" mode still works: it
+   analyses page source pasted by the user, entirely in the browser.
+   Security headers cannot be read through a proxy and are skipped here
+   — use the CLI for the full audit. */
 
 "use strict";
 
-const PROXY_GET = (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-const PROXY_RAW = (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-const FETCH_TIMEOUT_MS = 12000;
+/* Each proxy returns { html, httpCode }. `json` means the allorigins
+   /get envelope ({ contents, status: { http_code } }); the rest return
+   the raw page and the proxy's own HTTP status. */
+const PROXIES = [
+  {
+    name: "allorigins",
+    build: (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    json: true,
+  },
+  {
+    name: "codetabs",
+    build: (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    json: false,
+  },
+  {
+    name: "cors.lol",
+    build: (url) => `https://api.cors.lol/?url=${encodeURIComponent(url)}`,
+    json: false,
+  },
+  {
+    name: "corsproxy.io",
+    build: (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    json: false,
+  },
+];
+
+const FETCH_TIMEOUT_MS = 20000;
+const LINK_TIMEOUT_MS = 8000;
 const MAX_LINKS = 15;
 const MAX_IMAGES = 10;
 const MAX_ASSETS = 6;
@@ -64,6 +95,15 @@ function isWebLink(href) {
   return !["#", "mailto:", "tel:", "javascript:", "data:"].some((p) => lower.startsWith(p));
 }
 
+/* Resolve a URL without throwing on garbage input. Returns null instead. */
+function safeUrl(value, base) {
+  try {
+    return new URL(value, base).href;
+  } catch (err) {
+    return null;
+  }
+}
+
 async function fetchWithTimeout(url, ms = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -72,6 +112,54 @@ async function fetchWithTimeout(url, ms = FETCH_TIMEOUT_MS) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/* Fetch a page through the proxy list, first success wins. Throws only
+   when every proxy failed, with a message that says so plainly. */
+async function fetchPage(url, onProgress) {
+  const failures = [];
+  for (let i = 0; i < PROXIES.length; i++) {
+    const proxy = PROXIES[i];
+    if (onProgress) onProgress(`Trying proxy ${i + 1} of ${PROXIES.length} (${proxy.name})…`);
+    try {
+      const response = await fetchWithTimeout(proxy.build(url));
+      if (!response.ok) {
+        failures.push(`${proxy.name}: HTTP ${response.status}`);
+        continue;
+      }
+      if (proxy.json) {
+        let data;
+        try {
+          data = await response.json();
+        } catch (err) {
+          failures.push(`${proxy.name}: unreadable reply`);
+          continue;
+        }
+        if (!data.contents) {
+          failures.push(`${proxy.name}: empty reply`);
+          continue;
+        }
+        return {
+          html: data.contents,
+          httpCode: data.status ? data.status.http_code : 200,
+          via: proxy.name,
+        };
+      }
+      const html = await response.text();
+      if (!html) {
+        failures.push(`${proxy.name}: empty reply`);
+        continue;
+      }
+      return { html, httpCode: response.status, via: proxy.name };
+    } catch (err) {
+      failures.push(`${proxy.name}: ${err.name === "AbortError" ? "timed out" : "unreachable"}`);
+    }
+  }
+  throw new Error(
+    `All ${PROXIES.length} fetch proxies failed (${failures.join("; ")}). ` +
+    "The site itself may be fine — the proxies are down. Try again, or use the " +
+    "\"paste HTML\" option below the form."
+  );
 }
 
 /* Run async jobs with a concurrency cap so link checks stay polite. */
@@ -88,14 +176,29 @@ async function mapLimit(items, limit, fn) {
   return results;
 }
 
+/* Link status with three outcomes. A proxy failure is "unknown" — never
+   "broken": reporting every link broken just because a proxy is down
+   would be a false alarm. */
 async function checkLinkStatus(url) {
   try {
-    const response = await fetchWithTimeout(PROXY_GET(url));
-    const data = await response.json();
+    const response = await fetchWithTimeout(
+      `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+      LINK_TIMEOUT_MS
+    );
+    if (!response.ok) return { state: "unknown", detail: `proxy HTTP ${response.status}` };
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      return { state: "unknown", detail: "unreadable proxy reply" };
+    }
     const code = data.status && data.status.http_code;
-    return { ok: code >= 200 && code < 400, detail: code || "no response" };
+    if (!code) return { state: "unknown", detail: "no status from proxy" };
+    return code >= 200 && code < 400
+      ? { state: "ok", detail: code }
+      : { state: "broken", detail: code };
   } catch (err) {
-    return { ok: false, detail: "unreachable" };
+    return { state: "unknown", detail: "unreachable" };
   }
 }
 
@@ -109,13 +212,19 @@ function checkImageLoads(url) {
   });
 }
 
+/* Asset size via the allorigins /get envelope (raw /raw endpoint is
+   unreliable). A failure only means "size unknown", never a finding. */
 async function checkAssetSize(url) {
   try {
-    const response = await fetchWithTimeout(PROXY_RAW(url));
-    const blob = await response.blob();
-    return blob.size;
+    const response = await fetchWithTimeout(
+      `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+      LINK_TIMEOUT_MS
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data.contents === "string" ? data.contents.length : null;
   } catch (err) {
-    return null; // size unknown; not a finding on its own
+    return null;
   }
 }
 
@@ -146,7 +255,13 @@ function detectAi(doc, html) {
 
   const seenHosts = new Set();
   for (const img of doc.images) {
-    const host = new URL(img.src, location.href).hostname.toLowerCase();
+    if (!img.src) continue;
+    let host = "";
+    try {
+      host = new URL(img.src, location.href).hostname.toLowerCase();
+    } catch (err) {
+      continue;
+    }
     if (STOCK_PHOTO_HOSTS.includes(host) && !seenHosts.has(host)) {
       seenHosts.add(host);
       weak.push(`Stock photo from ${host}`);
@@ -162,28 +277,20 @@ function detectAi(doc, html) {
   return { verdict, signals };
 }
 
-async function analyze(rawUrl) {
-  const url = normalizeUrl(rawUrl);
+/* The shared audit. `status` is null when the HTML was pasted by the
+   user (no HTTP status to judge). `source` describes how the page was
+   obtained, shown under the score. */
+async function analyzeDocument({ html, url, status, elapsedMs, via, source }) {
   const findings = [];
   const add = (severity, category, message) =>
     findings.push({ severity, category, message });
 
-  const started = performance.now();
-  const response = await fetchWithTimeout(PROXY_GET(url));
-  const data = await response.json();
-  const elapsedMs = Math.round(performance.now() - started);
-  const status = data.status ? data.status.http_code : 0;
-
-  if (!data.contents) {
-    throw new Error("The proxy returned nothing for this URL. It may block bots, or the site may be down.");
-  }
-
   const isHttps = url.startsWith("https://");
-  const doc = new DOMParser().parseFromString(data.contents, "text/html");
+  const doc = new DOMParser().parseFromString(html, "text/html");
 
-  if (status !== 200) add("high", "Availability", `Page returned HTTP ${status}`);
+  if (status !== null && status !== 200) add("high", "Availability", `Page returned HTTP ${status}`);
   if (!isHttps) add("high", "Security", "Page is served over plain HTTP, not HTTPS");
-  if (elapsedMs > 3000) add("medium", "Performance", `Slow response: ${(elapsedMs / 1000).toFixed(2)}s to fetch`);
+  if (elapsedMs !== null && elapsedMs > 3000) add("medium", "Performance", `Slow response: ${(elapsedMs / 1000).toFixed(2)}s to fetch`);
 
   // SEO basics.
   const title = (doc.title || "").trim();
@@ -218,8 +325,8 @@ async function analyze(rawUrl) {
   for (const anchor of doc.querySelectorAll("a[href]")) {
     const href = anchor.getAttribute("href");
     if (!isWebLink(href)) continue;
-    const absolute = new URL(href, url).href;
-    if (seenLinks.has(absolute)) continue;
+    const absolute = safeUrl(href, url);
+    if (!absolute || seenLinks.has(absolute)) continue;
     seenLinks.add(absolute);
     links.push(absolute);
     if (links.length >= MAX_LINKS) break;
@@ -227,8 +334,13 @@ async function analyze(rawUrl) {
   const linkResults = await mapLimit(links, LINK_CONCURRENCY, async (link) => ({
     link, ...(await checkLinkStatus(link)),
   }));
+  let unknownLinks = 0;
   for (const result of linkResults) {
-    if (!result.ok) add("high", "Links", `Broken link: ${result.link} (${result.detail})`);
+    if (result.state === "broken") add("high", "Links", `Broken link: ${result.link} (${result.detail})`);
+    else if (result.state === "unknown") unknownLinks++;
+  }
+  if (unknownLinks > 0) {
+    add("low", "Links", `Could not verify ${unknownLinks} link${unknownLinks > 1 ? "s" : ""} — the proxy was unreachable, not necessarily broken`);
   }
   const totalLinks = doc.querySelectorAll("a[href]").length;
   if (totalLinks > links.length) {
@@ -280,11 +392,38 @@ async function analyze(rawUrl) {
     }
   }
 
-  const ai = detectAi(doc, data.contents);
+  const ai = detectAi(doc, html);
   const score = Math.max(0, 100 - findings.reduce((sum, f) => sum + POINTS[f.severity], 0));
   const health = score >= 85 ? "Good" : score >= 60 ? "Fair" : "Poor";
 
-  return { url, status, isHttps, elapsedMs, score, health, findings, ai };
+  return { url, status, isHttps, elapsedMs, score, health, findings, ai, via, source };
+}
+
+async function analyzeUrl(rawUrl, onProgress) {
+  const url = normalizeUrl(rawUrl);
+  const started = performance.now();
+  const page = await fetchPage(url, onProgress);
+  const elapsedMs = Math.round(performance.now() - started);
+  return analyzeDocument({
+    html: page.html,
+    url,
+    status: page.httpCode,
+    elapsedMs,
+    via: page.via,
+    source: `fetched via ${page.via} proxy`,
+  });
+}
+
+async function analyzeHtml(html, rawUrl) {
+  const url = rawUrl ? normalizeUrl(rawUrl) : "https://pasted-html.local/";
+  return analyzeDocument({
+    html,
+    url,
+    status: null,
+    elapsedMs: null,
+    via: "pasted HTML",
+    source: "HTML pasted by you — no proxy needed",
+  });
 }
 
 function renderReport(report) {
@@ -292,8 +431,10 @@ function renderReport(report) {
   const healthEl = $("score-health");
   healthEl.textContent = report.health;
   healthEl.className = "score-health " + report.health.toLowerCase();
+  const statusText = report.status !== null ? `HTTP ${report.status} · ` : "";
+  const timeText = report.elapsedMs !== null ? ` · ${report.elapsedMs} ms` : "";
   $("score-basics").textContent =
-    `HTTP ${report.status} · ${report.isHttps ? "HTTPS" : "HTTP"} · ${report.elapsedMs} ms via proxy`;
+    `${statusText}${report.isHttps ? "HTTPS" : "HTTP"}${timeText} · ${report.source}`;
 
   $("ai-verdict").textContent = report.ai.verdict;
   const signalsEl = $("ai-signals");
@@ -355,28 +496,45 @@ function showStatus(message, isError = false) {
   el.classList.toggle("error", isError);
 }
 
-$("analyze-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const input = $("url-input");
+async function runAnalysis(run) {
   const button = $("analyze-btn");
-  const url = input.value.trim();
-  if (!url) return;
-
+  const pasteButton = $("paste-btn");
   button.disabled = true;
+  pasteButton.disabled = true;
   button.textContent = "Analyzing…";
   $("results").hidden = true;
-  showStatus(`Fetching ${normalizeUrl(url)} through the proxy…`);
-
+  showStatus("Analyzing…");
   try {
-    const report = await analyze(url);
+    const report = await run((message) => showStatus(message));
     $("status").hidden = true;
     renderReport(report);
   } catch (err) {
     showStatus(`Could not analyze that URL: ${err.message}`, true);
   } finally {
     button.disabled = false;
+    pasteButton.disabled = false;
     button.textContent = "Analyze";
   }
+}
+
+$("analyze-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const url = $("url-input").value.trim();
+  if (!url) return;
+  await runAnalysis((onProgress) => {
+    showStatus(`Fetching ${normalizeUrl(url)}…`);
+    return analyzeUrl(url, onProgress);
+  });
+});
+
+$("paste-btn").addEventListener("click", async () => {
+  const html = $("html-input").value.trim();
+  if (!html) {
+    showStatus("Paste the page HTML first (open the page, press Ctrl+U, copy all).", true);
+    return;
+  }
+  const pageUrl = $("html-url-input").value.trim();
+  await runAnalysis(() => analyzeHtml(html, pageUrl));
 });
 
 for (const chip of document.querySelectorAll(".chip")) {

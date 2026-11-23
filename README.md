@@ -64,10 +64,14 @@ Findings: 8 (0 high, 7 medium, 1 low)
 
 ## Web version
 
-Open the link above, paste a URL, hit Analyze. The page is fetched through
-the public [allorigins.win](https://allorigins.win) CORS proxy, which is
-why it works from a static page with no backend. Link checks are capped at
-15 and image checks at 10 so results stay fast.
+Open the link above, paste a URL — a bare domain like `example.com` works,
+the `https://` is added for you — and hit Analyze. The page is fetched
+through public CORS proxies (allorigins first, then codetabs, cors.lol and
+corsproxy.io as fallbacks), which is why it works from a static page with
+no backend. Link checks are capped at 15 and image checks at 10 so results
+stay fast. If every proxy is down, the "paste HTML" option analyses page
+source you paste yourself, entirely in your browser — and a link the proxy
+could not reach is reported as "could not verify", never as broken.
 
 Two things the web version cannot do: read security headers (the proxy does
 not expose them) and follow redirects. Use the CLI for the full audit.

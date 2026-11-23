@@ -25,8 +25,8 @@
 
       <form id="analyze-form" class="analyze-form">
         <label class="sr-only" for="url-input">Website URL</label>
-        <input id="url-input" type="url" inputmode="url" required
-               placeholder="https://example.com" autocomplete="off"
+        <input id="url-input" type="text" inputmode="url" required
+               placeholder="example.com or https://example.com" autocomplete="off"
                spellcheck="false">
         <button id="analyze-btn" type="submit">Analyze</button>
       </form>
@@ -34,11 +34,25 @@
         <button type="button" class="chip" data-url="https://example.com">example.com</button>
         <button type="button" class="chip" data-url="https://akbar-lab-droid.github.io/repo-safety-check/">repo-safety-check</button>
       </p>
-      <p class="proxy-note">The web version fetches pages through the public
-      <a href="https://allorigins.win">allorigins.win</a> CORS proxy, so it can
-      read pages from any site. No sign-up, no token, nothing is stored.
-      Security headers can't be checked from a browser — use the
-      <a href="https://github.com/Akbar-Lab-Droid/website-bug-analyzer">CLI</a>
+      <details class="paste-fallback">
+        <summary>Proxy not working? Paste the page HTML instead</summary>
+        <p class="paste-hint">Open the page in your browser, press Ctrl+U
+        (View Source), copy everything, and paste it here. The audit runs
+        entirely in your browser — no proxy needed for the page itself.</p>
+        <textarea id="html-input" rows="6" spellcheck="false"
+          placeholder="&lt;!doctype html&gt;&#10;&lt;html&gt;..."></textarea>
+        <div class="paste-row">
+          <input id="html-url-input" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Page URL (optional, e.g. example.com)">
+          <button id="paste-btn" type="button">Analyze pasted HTML</button>
+        </div>
+      </details>
+      <p class="proxy-note">The web version fetches pages through public
+      CORS proxies (allorigins first, then fallbacks), so it can read
+      pages from any site. No sign-up, no token, nothing is stored.
+      Proxies sometimes go down — if all of them fail, use the paste-HTML
+      option above. Security headers can't be checked from a browser —
+      use the <a href="https://github.com/Akbar-Lab-Droid/website-bug-analyzer">CLI</a>
       for the full audit.</p>
     </section>
 
