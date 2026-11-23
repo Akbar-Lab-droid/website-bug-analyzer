@@ -72,6 +72,31 @@ why it works from a static page with no backend. Link checks are capped at
 Two things the web version cannot do: read security headers (the proxy does
 not expose them) and follow redirects. Use the CLI for the full audit.
 
+## Protecting your code
+
+`scripts/protect.py` builds a protected copy of a Python program so it
+is harder to copy and rewrite casually:
+
+```sh
+python3 scripts/protect.py analyzer.py
+python3 dist/analyzer.pyc https://example.com
+```
+
+It compiles the program to optimised bytecode (`.pyc`) with docstrings
+stripped. The copy runs exactly like the original, but there is no
+readable source left to copy: no comments, no docstrings, no plain-text
+code. A built-in smoke test runs the protected copy against
+`https://example.com` and compares its output with the original before
+reporting success. The `.pyc` file is a build artifact (ignored by
+`.gitignore`) — the readable source stays in the repository.
+
+Be honest about what this stops: bytecode can be decompiled with
+public tools, so this blocks casual recoding, not a determined person.
+Real protection needs a compiled binary (PyInstaller, Nuitka, Cython),
+a private repository, or a licence other than MIT (which allows reuse).
+The tool also never hides code in an encoded blob — encoded payloads
+look exactly like malware to every scanner, including repo-safety-check.
+
 ## Running the tests
 
 ```bash
