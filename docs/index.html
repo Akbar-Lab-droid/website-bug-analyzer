@@ -47,9 +47,10 @@
           <button id="paste-btn" type="button">Analyze pasted HTML</button>
         </div>
       </details>
-      <p class="proxy-note">The web version fetches pages through public
-      CORS proxies (allorigins first, then fallbacks), so it can read
-      pages from any site. No sign-up, no token, nothing is stored.
+      <p class="proxy-note">The web version fetches pages through its own
+      proxy (website-bug-proxy on Vercel) first, then public CORS proxies
+      as fallbacks, so it can read pages from any site. No sign-up, no
+      token, nothing is stored.
       Proxies sometimes go down — if all of them fail, use the paste-HTML
       option above. Security headers can't be checked from a browser —
       use the <a href="https://github.com/Akbar-Lab-Droid/website-bug-analyzer">CLI</a>

@@ -2,8 +2,9 @@
    Same checks as the CLI (analyzer.py) wherever the browser allows them:
    SEO, links, images, mixed content, unminified assets, AI-vs-human signals.
 
-   Pages are fetched through public CORS proxies (allorigins.win first,
-   then fallbacks), because a browser cannot fetch other sites directly.
+   Pages are fetched through a first-party proxy (website-bug-proxy on
+   Vercel) first, then public CORS proxies (allorigins.win and fallbacks),
+   because a browser cannot fetch other sites directly.
    Public proxies are flaky — any of them can be down — so the app retries
    across several proxies and never reports a proxy failure as a broken
    link. If every proxy fails, the "paste HTML" mode still works: it
@@ -17,6 +18,11 @@
    /get envelope ({ contents, status: { http_code } }); the rest return
    the raw page and the proxy's own HTTP status. */
 const PROXIES = [
+  {
+    name: "website-bug-proxy",
+    build: (url) => `https://website-bug-proxy.vercel.app/api/proxy?url=${encodeURIComponent(url)}`,
+    json: true,
+  },
   {
     name: "allorigins",
     build: (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,

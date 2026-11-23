@@ -66,9 +66,11 @@ Findings: 8 (0 high, 7 medium, 1 low)
 
 Open the link above, paste a URL — a bare domain like `example.com` works,
 the `https://` is added for you — and hit Analyze. The page is fetched
-through public CORS proxies (allorigins first, then codetabs, cors.lol and
-corsproxy.io as fallbacks), which is why it works from a static page with
-no backend. Link checks are capped at 15 and image checks at 10 so results
+through a first-party proxy
+([website-bug-proxy](https://github.com/Akbar-Lab-Droid/website-bug-proxy),
+Vercel serverless) first, then public CORS proxies (allorigins, codetabs,
+cors.lol, corsproxy.io) as fallbacks, which is why it works from a static
+page with no backend. Link checks are capped at 15 and image checks at 10 so results
 stay fast. If every proxy is down, the "paste HTML" option analyses page
 source you paste yourself, entirely in your browser — and a link the proxy
 could not reach is reported as "could not verify", never as broken.
